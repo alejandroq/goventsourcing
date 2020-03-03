@@ -1,12 +1,12 @@
 package main
 
 import (
-	"github.com/alejandroq/goventsourcing/lib/eventsourcinglocalsync"
-	"github.com/alejandroq/goventsourcing/lib/feedback"
+	"github.com/alejandroq/goventsourcing/example/eventsourcinglocalsync"
+	"github.com/alejandroq/goventsourcing/example/feedbackcomponent"
 )
 
 func main() {
 	eb := eventsourcinglocalsync.New()
-	fs := feedback.Service{}
+	fs := feedbackcomponent.Service{}
 	_ = eb.Subscribe("Published Feedback", &fs)
 }
