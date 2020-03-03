@@ -1,3 +1,4 @@
+///this file is an exemplar of using the event bus and components elsewhere.
 package main
 
 import (
@@ -8,5 +9,5 @@ import (
 func main() {
 	eb := eventsourcinglocalsync.New()
 	fs := feedbackcomponent.Service{}
-	_ = eb.Subscribe("Published Feedback", &fs)
+	_ = eb.Subscribe("PublishedFeedback", &fs)
 }

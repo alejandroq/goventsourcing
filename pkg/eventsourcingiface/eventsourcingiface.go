@@ -5,25 +5,6 @@ import (
 	"time"
 )
 
-//Context is an EventBus context with ReadableWritable characteristics.
-type Context interface {
-	context.Context
-	EventBusFactory
-}
-
-//Event message appends to a global event bus for a bounded context
-//for auditability purposes and to engage clients such as simulations
-//and subscriptions.
-//Contracts with implicit clients should be upheld while it makes
-//sense to do so. As this is typically an archectectural pain point for
-//event sourcing, strategies such as anti-corruption layers can assist
-//in the event of needing to maintain older contracts with dependent
-//downstream clients.
-//A possible solution for the above, between commands and other event types,
-//a nameing convention should include a version string for explicit dependency;
-//therefore extensible anti-corruption layers can translate n+1 versions to n if
-//feasible. The interface is meant to provide
-//struct tag flexibility captured in concrete implementations.
 type Event interface {
 	//EventBus generates the following 4 attributes upon
 	//event write.
@@ -61,21 +42,17 @@ type EventMetadata interface {
 //benefit from an identity state (a zero value so to speak)
 //and associative principles.
 //Apply returns void as-is intended to introduce side-effects
-//in the bounded context.
-//StartStartWith is flexible and dependent upon the implementation
-//of the triggering EventBus. It is generally reccomended that the
-//Context be generated in the EventBus for resouce cleanup, etc.
+//in the bounded context. The context is passed along for resource
+//cleaning if needbe.
+//StartWith is a flexible setup method.
+//It is generally reccomended that the
 type Subscriber interface {
-	StartWith(Context)
-	Apply(Event)
+	StartWith(EventBus)
+	Apply(context.Context, Event)
 }
 
 //EventBus centralizes access to an event source persistency layer
 //and therefore should be disciplined as the abstraction for said.
-//Subscriptions can derive from the EventBus.
-//Commands are event categories or types, typically tagged with type
-//strings that include the substring of `command:<event>` and are meant
-//to enact side-effects.
 type EventBus interface {
 	//Subscribe to a stream name with a Subscriber
 	Subscribe(string, Subscriber) error
@@ -85,12 +62,10 @@ type EventBus interface {
 
 	//Read from the EventBus starting at N position and consume J records
 	Read(string, int, int) ([]Event, error)
-}
 
-//EventBusFactory encapsulates EventBus and a factory methods for
-//for generating interface compliant Event and EventMetadata.
-type EventBusFactory interface {
+	//Conviniently create a new event
 	NewEvent() Event
+
+	//Conviniently create new event metadata
 	NewEventMetadata() EventMetadata
-	EventBus
 }

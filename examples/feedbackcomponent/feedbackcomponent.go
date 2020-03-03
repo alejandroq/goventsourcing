@@ -1,6 +1,7 @@
 package feedbackcomponent
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/alejandroq/goventsourcing/pkg/eventsourcingiface"
@@ -8,16 +9,25 @@ import (
 
 //Service ...
 type Service struct {
-	ctx eventsourcingiface.Context
+	bus eventsourcingiface.EventBus
+}
+
+//Feedback ...
+type Feedback struct {
+	Contents string `json:"contents"`
 }
 
 //StartWith ...
-func (s *Service) StartWith(ctx eventsourcingiface.Context) {
-	fmt.Println("[INFO] started feedback service")
-	s.ctx = ctx
+func (s *Service) StartWith(bus eventsourcingiface.EventBus) {
+	fmt.Println("[INFO] started feedback component service")
+	s.bus = bus
 }
 
 //Apply ...
-func (s *Service) Apply(event eventsourcingiface.Event) {
+func (s *Service) Apply(ctx context.Context, event eventsourcingiface.Event) {
+	fmt.Println("[DEBUG]", event)
+	if event == nil {
+		return
+	}
 	fmt.Printf("[INFO] applying change from %s sequence number %v.\n", event.GetMetadata().GetOriginStreamName(), event.GetLocalSequenceID())
 }

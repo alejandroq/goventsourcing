@@ -2,6 +2,10 @@
 start:
 	go run cmd/main.go
 
+.PHONY: httpserver
+httpserver:
+	go run examples/httpservercmd/httpservercmd.go
+
 .PHONY: test
 test:
 	go test ./...

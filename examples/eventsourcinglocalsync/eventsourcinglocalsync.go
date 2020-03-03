@@ -1,6 +1,7 @@
 package eventsourcinglocalsync
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 //EventBus subscribes, reads and writes to the event store.
 type EventBus struct {
+	ctx                 context.Context
 	events              map[string][]eventsourcingiface.Event
 	subscribers         map[string][]eventsourcingiface.Subscriber
 	localSequenceCount  map[string]int
@@ -17,8 +19,9 @@ type EventBus struct {
 }
 
 //New eventsourcingiface.eventbusfactory
-func New() eventsourcingiface.EventBusFactory {
+func New() eventsourcingiface.EventBus {
 	return &EventBus{
+		context.Background(),
 		make(map[string][]eventsourcingiface.Event),
 		make(map[string][]eventsourcingiface.Subscriber),
 		make(map[string]int),
@@ -29,6 +32,7 @@ func New() eventsourcingiface.EventBusFactory {
 //Subscribe subscribes a subscriber to a stream
 func (eb *EventBus) Subscribe(sn string, s eventsourcingiface.Subscriber) error {
 	eb.subscribers[sn] = append(eb.subscribers[sn], s)
+	s.StartWith(eb)
 	return nil
 }
 
@@ -50,8 +54,12 @@ func (eb *EventBus) Write(sn string, m eventsourcingiface.Event) error {
 			GlobalSequenceID: eb.globalSequenceCount,
 			Timestamp:        time.Now(),
 		}
-		e = e.SetEventID(m.GetEventID())
-		e = e.SetType(m.GetType()).SetMetadata(m.GetMetadata())
+		e = e.SetEventID(m.GetEventID()).SetType(m.GetType())
+		if m.GetMetadata() != nil {
+			e = e.SetMetadata(m.GetMetadata())
+		} else {
+			e = e.SetMetadata(eb.NewEventMetadata())
+		}
 		e = e.SetBody(m.GetBody()).SetVersion(m.GetVersion())
 
 		//append event to stream
@@ -59,13 +67,12 @@ func (eb *EventBus) Write(sn string, m eventsourcingiface.Event) error {
 
 		//apply new event to subscribers of a stream name
 		for _, s := range eb.subscribers[sn] {
-			s.Apply(e)
+			s.Apply(eb.ctx, e)
 		}
 	}
 
 	//write to the global stream name as well as the event ID based stream
 	write(sn)
-	fmt.Println("[INFO] writing to stream " + fmt.Sprintf("%s-%s", sn, m.GetEventID()))
 	write(fmt.Sprintf("%s-%s", sn, m.GetEventID()))
 
 	return nil
