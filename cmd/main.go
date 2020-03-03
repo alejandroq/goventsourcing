@@ -7,6 +7,6 @@ import (
 
 func main() {
 	eb := eventsourcinglocalsync.New()
-	fb := feedback.Feedback{}
-	eb.Subscribe("FeedbackSubmitted", &fb)
+	fs := feedback.Service{}
+	_ = eb.Subscribe("Published Feedback", &fs)
 }

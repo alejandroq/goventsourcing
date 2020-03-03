@@ -8,4 +8,4 @@ An partial implementation of EventSourcing in Go (prior to the literal store and
 - Setup functional evented services working in Lambda via DynamoDB streams (ie. serverless async)
 - Setup functional evented services working in Postgres via Messages-DB (ie. serverful async, more traditional for the work load)
 
-![dependency tree](dependencytree.png)
+![dependency tree](.github/dependencytree.png)

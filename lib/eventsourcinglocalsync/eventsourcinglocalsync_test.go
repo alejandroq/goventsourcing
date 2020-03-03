@@ -1,91 +1,129 @@
 package eventsourcinglocalsync
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/alejandroq/goventsourcing/pkg/eventsourcingiface"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
-type context = eventsourcingiface.Context
-type metadata = eventsourcingiface.MessageMetadata
-
+//mock component service
 type mock struct {
-	ctx          context
+	ctx          eventsourcingiface.Context
 	sideeffected bool
+	lastmessage  string
 }
 
-func (ms *mock) WithContext(ctx context) {
+type body struct {
+	Hello string `json:"hello"`
+}
+
+func (ms *mock) StartWith(ctx eventsourcingiface.Context) {
+	fmt.Println("[DEBUG] this ran")
 	ms.ctx = ctx
 }
 
-func (ms *mock) Apply(event event) {
-	if strings.Contains(event.Type, "EventBusTested") {
+func (ms *mock) Apply(event eventsourcingiface.Event) {
+	//apply should be idempotent as message duplicity cannot be guaranteed nil
+	if strings.Contains(event.GetType(), "example:command") {
 		ms.sideeffected = true
 	}
+	var b body
+	_ = json.Unmarshal([]byte(event.GetBody()), &b)
+	ms.lastmessage = b.Hello
 }
 
-func TestEventBus_Subscribe(t *testing.T) {
+func TestWriteReadEvent(t *testing.T) {
 	eb := New()
-	sn := "EventBusTested"
-	ms := mock{nil, false}
-	err := eb.Subscribe(sn, &ms)
-	assert.Nil(t, err)
+	sn := "PublishedOrder"
+	ms := mock{nil, false, ""}
+	_ = eb.Subscribe(sn, &ms)
 
-	m := eventsourcingiface.Message{
-		Type:     "EventBusTested:command-uniqueid",
-		Metadata: metadata{},
-		Body:     nil,
-		Version:  0,
-	}
+	b, _ := json.Marshal(body{"World"})
+	e := eb.NewEvent().SetType("example:command").SetBody(string(b))
+	_ = eb.Write(sn, e)
 
-	err = eb.Write(sn, m)
-	assert.Nil(t, err)
-
-	//this stream doesn't exist, therefore return empty
-	es, err := eb.Read("ButtonClicked", 0, 2)
-	assert.Nil(t, err)
-	assert.Len(t, es, 0)
-
-	//this stream returns less than the limit return 1
-	es, err = eb.Read(sn, 0, 2)
-	assert.Nil(t, err)
-	assert.Len(t, es, 1)
-
-	//the given position doesn't exist, therefore return empty
-	_ = eb.Write(sn, m)
-	es, err = eb.Read(sn, 3, 1)
-	assert.Nil(t, err)
-	assert.Len(t, es, 0)
-}
-
-func TestEventBus_ReadWrite(t *testing.T) {
-	eb := New()
-	sn := "EventBusTested"
-	ms := mock{nil, false}
-	err := eb.Subscribe(sn, &ms)
-	assert.Nil(t, err)
-
-	m := eventsourcingiface.Message{
-		Type:     "EventBusTested:command-uniqueid",
-		Metadata: metadata{},
-		Body:     nil,
-		Version:  0,
-	}
-
-	_ = eb.Write(sn, m)
-	_ = eb.Write(sn, m)
-	_ = eb.Write(sn, m)
-
-	es, err := eb.Read(sn, 0, 2)
-	assert.Nil(t, err)
-	assert.Len(t, es, 2)
-
-	//assert that globalsequenceid's increment as expected
-	assert.Equal(t, es[0].GlobalSequenceID, 1)
-	assert.Equal(t, es[1].GlobalSequenceID, 2)
-
-	//assert the mock services sideeffect was called
+	//a write to "PublishedOrder" should cause a service side-effect.
 	assert.True(t, ms.sideeffected)
+
+	//read from "PublishedOrder" and verify that expected records exist.
+	rs, _ := eb.Read(sn, 0, 5)
+	assert.Greater(t, len(rs), 0)
+	assert.Equal(t, "World", ms.lastmessage)
 }
+
+func TestIncrementingLocalGlobalSequenceIDs(t *testing.T) {
+	eb := New()
+	sn := "PublishedOrder"
+	ms := mock{nil, false, ""}
+	_ = eb.Subscribe(sn, &ms)
+	id := uuid.New().String()
+
+	for i := 0; i < 3; i++ {
+		b, _ := json.Marshal(body{"World"})
+		e := eb.NewEvent().SetEventID(fmt.Sprintf("%s-%v", id, i)).SetType("example:command").SetBody(string(b))
+		_ = eb.Write(sn, e)
+	}
+
+	rs, _ := eb.Read(sn, 0, -1)
+	assert.Equal(t, 3, len(rs))
+
+	assert.Less(t, rs[0].GetGlobalSequenceID(), rs[1].GetGlobalSequenceID())
+	assert.Less(t, rs[0].GetLocalSequenceID(), rs[1].GetLocalSequenceID())
+
+	//read from a sub-stream and assert the records exist as expected
+	rs, _ = eb.Read(fmt.Sprintf("%s-%s-1", sn, id), 0, 5)
+	assert.Equal(t, 1, len(rs))
+}
+
+func TestReadLimit(t *testing.T) {
+	eb := New()
+	sn := "PublishedOrder"
+	ms := mock{nil, false, ""}
+	_ = eb.Subscribe(sn, &ms)
+	b, _ := json.Marshal(body{"World"})
+	e := eb.NewEvent().SetEventID(uuid.New().String()).SetBody(string(b))
+
+	//write 3 times redundantly.
+	_ = eb.Write(sn, e)
+	_ = eb.Write(sn, e)
+	_ = eb.Write(sn, e)
+
+	//assert can only read 2 provided explicit limit
+	rs, _ := eb.Read(sn, 0, 2)
+	assert.Equal(t, 2, len(rs))
+
+	//assert can read all provided an explicit limit of -1
+	rs, _ = eb.Read(sn, 0, -1)
+	assert.Equal(t, 3, len(rs))
+}
+
+func TestOneToManySubscribersToStream(t *testing.T) {
+	eb := New()
+	sn := "PublishedOrder"
+
+	sub1 := mock{nil, false, ""}
+	sub2 := mock{nil, false, ""}
+	sub3 := mock{nil, false, ""}
+
+	//subscribe 3 subscribers
+	_ = eb.Subscribe(sn, &sub1)
+	_ = eb.Subscribe(sn, &sub2)
+	_ = eb.Subscribe(sn, &sub3)
+
+	//publish a faux event
+	b, _ := json.Marshal(body{"World"})
+	e := eb.NewEvent().SetEventID(uuid.New().String()).SetType("example:command").SetBody(string(b))
+	eb.Write(sn, e)
+
+	//assert on known sideeffects
+	assert.Equal(t, true, sub1.sideeffected)
+	assert.Equal(t, true, sub2.sideeffected)
+	assert.Equal(t, true, sub3.sideeffected)
+}
+
+// Test for multiple services against a single stream?

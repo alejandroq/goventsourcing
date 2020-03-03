@@ -6,22 +6,18 @@ import (
 	"github.com/alejandroq/goventsourcing/pkg/eventsourcingiface"
 )
 
-type context = eventsourcingiface.Context
-type eventbus = eventsourcingiface.EventBus
-type event = eventsourcingiface.Event
-
-//Feedback domain async handles given user feedback
-type Feedback struct {
-	ctx context
+//Service ...
+type Service struct {
+	ctx eventsourcingiface.Context
 }
 
-//WithContext is the initial step in the service lifecycle
-//for context allocation and log aggregation.
-func (f *Feedback) WithContext(ctx context) error {
-	fmt.Println("[INFO] Staring Feedback")
-	f.ctx = ctx
-	return nil
+//StartWith ...
+func (s *Service) StartWith(ctx eventsourcingiface.Context) {
+	fmt.Println("[INFO] started feedback service")
+	s.ctx = ctx
 }
 
-//Apply events for the Feedback service's handling
-func (f *Feedback) Apply(event event) {}
+//Apply ...
+func (s *Service) Apply(event eventsourcingiface.Event) {
+	fmt.Printf("[INFO] applying change from %s sequence number %v.\n", event.GetMetadata().GetOriginStreamName(), event.GetLocalSequenceID())
+}

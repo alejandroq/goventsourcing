@@ -5,11 +5,10 @@ import (
 	"time"
 )
 
-//MessageMetadata are optional identifiers appended to Events
-//which occasions functionality downstream.
-type MessageMetadata struct {
-	OriginStreamName string `json:"originStreamName"`
-	TraceID          string `json:"traceID"`
+//Context is an EventBus context with ReadableWritable characteristics.
+type Context interface {
+	context.Context
+	EventBusFactory
 }
 
 //Event message appends to a global event bus for a bounded context
@@ -23,28 +22,39 @@ type MessageMetadata struct {
 //A possible solution for the above, between commands and other event types,
 //a nameing convention should include a version string for explicit dependency;
 //therefore extensible anti-corruption layers can translate n+1 versions to n if
-//feasible.
-type Event struct {
-	TransactionID    string    `json:"transactionID"`
-	LocalSequenceID  int       `json:"sequenceID"`
-	GlobalSequenceID int       `json:"globalSequenceID"`
-	Timestamp        time.Time `json:"timestamp"`
-	Message
+//feasible. The interface is meant to provide
+//struct tag flexibility captured in concrete implementations.
+type Event interface {
+	//EventBus generates the following 4 attributes upon
+	//event write.
+	GetTransactionID() string
+	GetLocalSequenceID() int
+	GetGlobalSequenceID() int
+	GetTimestamp() time.Time
+
+	//Service layer defined getter setter attributes.
+	GetEventID() string
+	GetType() string
+	GetMetadata() EventMetadata
+	GetBody() string
+	GetVersion() int
+
+	SetEventID(string) Event
+	SetType(string) Event
+	SetMetadata(EventMetadata) Event
+	SetBody(string) Event
+	SetVersion(int) Event
 }
 
-//Message are written to a stream in an EventBus; during this process
-//they are fleshed out into Events.
-type Message struct {
-	Type     string                 `json:"type"`
-	Metadata MessageMetadata        `json:"metadata"`
-	Body     map[string]interface{} `json:"body"`
-	Version  int                    `json:"version"`
-}
+//EventMetadata are optional identifiers appended to Events
+//which occasions functionality downstream.
+//orchestration vs choreography (?)
+type EventMetadata interface {
+	GetOriginStreamName() string
+	GetTraceID() string
 
-//Context is an EventBus context with ReadableWritable characteristics.
-type Context interface {
-	context.Context
-	ReadableWritableEventBus
+	SetOriginStreamName(string) EventMetadata
+	SetTraceID(string) EventMetadata
 }
 
 //Subscriber applies messages. Implementing domains, would
@@ -52,11 +62,11 @@ type Context interface {
 //and associative principles.
 //Apply returns void as-is intended to introduce side-effects
 //in the bounded context.
-//StartWithContext is flexible and dependent upon the implementation
+//StartStartWith is flexible and dependent upon the implementation
 //of the triggering EventBus. It is generally reccomended that the
 //Context be generated in the EventBus for resouce cleanup, etc.
 type Subscriber interface {
-	WithContext(Context)
+	StartWith(Context)
 	Apply(Event)
 }
 
@@ -67,21 +77,20 @@ type Subscriber interface {
 //strings that include the substring of `command:<event>` and are meant
 //to enact side-effects.
 type EventBus interface {
-	SubscribableEventBus
-	ReadableWritableEventBus
-}
-
-//SubscribableEventBus is an interface to subscribe to an EventBus
-type SubscribableEventBus interface {
 	//Subscribe to a stream name with a Subscriber
 	Subscribe(string, Subscriber) error
+
+	//Write a message to the EventBus
+	Write(string, Event) error
+
+	//Read from the EventBus starting at N position and consume J records
+	Read(string, int, int) ([]Event, error)
 }
 
-//ReadableWritableEventBus is an interface to write and read from an EventBus.
-type ReadableWritableEventBus interface {
-	//Write a message to a stream
-	Write(string, Message) error
-
-	//Read from a stream starting at N position and consume J records
-	Read(string, int, int) ([]Event, error)
+//EventBusFactory encapsulates EventBus and a factory methods for
+//for generating interface compliant Event and EventMetadata.
+type EventBusFactory interface {
+	NewEvent() Event
+	NewEventMetadata() EventMetadata
+	EventBus
 }
