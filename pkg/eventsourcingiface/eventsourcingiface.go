@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+//Event are individual records in the ledger of the event bus
+//that make up the persistency layer and are dynamically
+//allocated to actors.
 type Event interface {
 	//EventBus generates the following 4 attributes upon
 	//event write.
@@ -29,7 +32,8 @@ type Event interface {
 
 //EventMetadata are optional identifiers appended to Events
 //which occasions functionality downstream.
-//orchestration vs choreography (?)
+//can be the difference between orchestration and choreography:
+//https://stackoverflow.com/questions/4127241/orchestration-vs-choreography
 type EventMetadata interface {
 	GetOriginStreamName() string
 	GetTraceID() string
@@ -43,7 +47,7 @@ type EventMetadata interface {
 //and associative principles.
 //Apply returns void as-is intended to introduce side-effects
 //in the bounded context. The context is passed along for resource
-//cleaning if needbe.
+//cleaning if need-be.
 //StartWith is a flexible setup method.
 //It is generally reccomended that the
 type Subscriber interface {
