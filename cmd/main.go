@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/alejandroq/goventsourcing/example/eventsourcinglocalsync"
-	"github.com/alejandroq/goventsourcing/example/feedbackcomponent"
+	"github.com/alejandroq/goventsourcing/examples/eventsourcinglocalsync"
+	"github.com/alejandroq/goventsourcing/examples/feedbackcomponent"
 )
 
 func main() {
