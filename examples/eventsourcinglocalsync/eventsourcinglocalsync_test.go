@@ -22,7 +22,7 @@ type body struct {
 	Hello string `json:"hello"`
 }
 
-func (ms *mock) StartWith(bus eventsourcingiface.EventBus) {
+func (ms *mock) Start(bus eventsourcingiface.EventBus) {
 	ms.lastmessage = "ENABLED"
 }
 
@@ -87,7 +87,7 @@ func TestIncrementingLocalGlobalSequenceIDs(t *testing.T) {
 	assert.Equal(t, 1, len(rs))
 }
 
-func TestReadLimit(t *testing.T) {
+func TestReadPositionLimit(t *testing.T) {
 	eb := New()
 	sn := "PublishedOrder"
 	ms := mock{false, ""}
@@ -100,13 +100,17 @@ func TestReadLimit(t *testing.T) {
 	_ = eb.Write(sn, e)
 	_ = eb.Write(sn, e)
 
-	//assert can only read 2 provided explicit limit
-	rs, _ := eb.Read(sn, 0, 2)
-	assert.Equal(t, 2, len(rs))
+	//assert a read with position and limit behave as expected
+	rs, _ := eb.Read(sn, 2, 2)
+	assert.Equal(t, 1, len(rs))
 
 	//assert can read all provided an explicit limit of -1
-	rs, _ = eb.Read(sn, 0, -1)
+	rs, _ = eb.Read(sn, -1, -1)
 	assert.Equal(t, 3, len(rs))
+
+	//assert can read all from position N onwards given a limit of -1
+	rs, _ = eb.Read(sn, 1, -1)
+	assert.Equal(t, 2, len(rs))
 }
 
 func TestOneToManySubscribersToStream(t *testing.T) {

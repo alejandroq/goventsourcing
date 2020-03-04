@@ -17,8 +17,8 @@ type Feedback struct {
 	Contents string `json:"contents"`
 }
 
-//StartWith ...
-func (s *Service) StartWith(bus eventsourcingiface.EventBus) {
+//Start ...
+func (s *Service) Start(bus eventsourcingiface.EventBus) {
 	fmt.Println("[INFO] started feedback component service")
 	s.bus = bus
 }

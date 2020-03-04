@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-//EventBus subscribes, reads and writes to the event store.
+//EventBus implements eventsourcingiface.EventBus
 type EventBus struct {
 	ctx                 context.Context
 	events              map[string][]eventsourcingiface.Event
@@ -18,7 +18,7 @@ type EventBus struct {
 	globalSequenceCount int
 }
 
-//New eventsourcingiface.eventbusfactory
+//New eventsourcingiface.EventBus implementation
 func New() eventsourcingiface.EventBus {
 	return &EventBus{
 		context.Background(),
@@ -32,60 +32,65 @@ func New() eventsourcingiface.EventBus {
 //Subscribe subscribes a subscriber to a stream
 func (eb *EventBus) Subscribe(sn string, s eventsourcingiface.Subscriber) error {
 	eb.subscribers[sn] = append(eb.subscribers[sn], s)
-	s.StartWith(eb)
+	s.Start(eb)
 	return nil
 }
 
-//Write an event to 2 streams - 1 to the plain stream name and
-//the other is written to a sub-stream: <stream name>-<event id>
+//Write an event to 2 streams:
+//- 1 to the general stream name
+//- 2 to the sub-stream: ie. <stream name>-<event id>
 func (eb *EventBus) Write(sn string, m eventsourcingiface.Event) error {
+	//generate a unique transaction ID
 	tid := uuid.New().String()
 
 	//increment global sequence IDs
 	eb.globalSequenceCount = eb.globalSequenceCount + 1
 
 	write := func(sn string) {
+		//increment local sequence IDs per the particular stream
 		eb.localSequenceCount[sn] = eb.localSequenceCount[sn] + 1
 
-		//create event and begin copying types, bodies, etc from client provided events
+		//generate an event and apply client provided parameters.
 		var e eventsourcingiface.Event = event{
 			TransactionID:    tid,
 			LocalSequenceID:  eb.localSequenceCount[sn],
 			GlobalSequenceID: eb.globalSequenceCount,
 			Timestamp:        time.Now(),
 		}
+
 		e = e.SetEventID(m.GetEventID()).SetType(m.GetType())
+		e = e.SetBody(m.GetBody()).SetVersion(m.GetVersion())
 		if m.GetMetadata() != nil {
 			e = e.SetMetadata(m.GetMetadata())
 		} else {
 			e = e.SetMetadata(eb.NewEventMetadata())
 		}
-		e = e.SetBody(m.GetBody()).SetVersion(m.GetVersion())
 
-		//append event to stream
+		//append event to the ledger
 		eb.events[sn] = append(eb.events[sn], e.(event))
 
-		//apply new event to subscribers of a stream name
+		//apply new event to subscribed subscribers
 		for _, s := range eb.subscribers[sn] {
 			s.Apply(eb.ctx, e)
 		}
 	}
 
-	//write to the global stream name as well as the event ID based stream
+	//write to the general stream
 	write(sn)
+	//write to the sub-stream: ie. <stream name>-<event id>
 	write(fmt.Sprintf("%s-%s", sn, m.GetEventID()))
 
 	return nil
 }
 
-//Read events from a stream. Projections can be computed across state if the limit is -1.
+//Read events from a stream.
+//Limits of -1 will return all records following a given position. This could be used for calculating
+//aggregations and projections to dispose upon materialized data views (or ephemeral data stores).
 func (eb *EventBus) Read(sn string, pos int, limit int) (rs []eventsourcingiface.Event, err error) {
-	rs = []eventsourcingiface.Event{}
-
 	defer func() {
 		//recover from out of bound errors
 		if r := recover(); r != nil {
-			//return an empty result set if out of bounds
+			//return an empty result set if requiring recovery
 			rs = []eventsourcingiface.Event{}
 			return
 		}
@@ -93,25 +98,27 @@ func (eb *EventBus) Read(sn string, pos int, limit int) (rs []eventsourcingiface
 
 	es := eb.events[sn]
 
-	if len(es) > limit && limit != -1 {
-		for i := 0; i < limit; i++ {
-			rs = append(rs, es[pos+i])
-		}
-	} else {
-		rs = es
+	if limit == -1 && pos > 0 {
+		return es[pos:], nil
 	}
 
-	fmt.Println(eb.events)
+	if limit == -1 && pos <= 0 {
+		return es, nil
+	}
 
-	return rs, nil
+	if len(es[pos:]) > limit {
+		return es[pos : pos+limit], nil
+	}
+
+	return es[pos:], nil
 }
 
-//NewEvent creates a new event
+//NewEvent creates a new eventsourcingiface.Event
 func (eb *EventBus) NewEvent() eventsourcingiface.Event {
 	return event{}
 }
 
-//NewEventMetadata creates new metadata
+//NewEventMetadata creates a new eventsourcingiface.EventMetadata
 func (eb *EventBus) NewEventMetadata() eventsourcingiface.EventMetadata {
 	return metadata{}
 }
