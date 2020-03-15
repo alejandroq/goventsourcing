@@ -7,4 +7,6 @@ An partial implementation of EventSourcing in Go (prior to the literal store and
 
 `go get github.com/alejandroq/goventsourcing`
 
+## Example Dependency Tree
+
 ![dependency tree](.github/dependencytree.png)
